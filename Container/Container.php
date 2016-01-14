@@ -6,6 +6,7 @@ use Closure;
 use Exception;
 use ArrayAccess;
 use ReflectionClass;
+use ReflectionParameter;
 use Simply\Interfaces\IContainer;
 
 class Container implements IContainer, ArrayAccess
@@ -16,9 +17,7 @@ class Container implements IContainer, ArrayAccess
 
    public function bind($key, $value, $singleton = false)
    {
-      if (isset($this->bindings[$key]) or isset($this->instances[$key])) {
-         throw new Exception("key $key has already been bound");
-      }
+      $this->checkUnique($key);
 
       $this->bindings[$key] = [$value, $singleton];
    }
@@ -30,9 +29,7 @@ class Container implements IContainer, ArrayAccess
 
    public function instance($key, $object)
    {
-      if (isset($this->bindings[$key]) or isset($this->instances[$key])) {
-         throw new Exception("key $key has already been bound");
-      }
+      $this->checkUnique($key);
 
       $this->instances[$key] = $object;
    }
@@ -86,31 +83,19 @@ class Container implements IContainer, ArrayAccess
    {
       $reflector = new ReflectionClass($class);
 
-      $dependencies = [];
-
-      foreach ($reflector->getConstructor()->getParameters() as $parameter) {
-         if ($class = $parameter->getClass()) {
-            if ($class->name == key($definition)) {
-               $dependencies[] = $this->resolve(current($definition));
-               continue;
-            }
-            $dependencies[] = $this->resolve($class->name);
-         } else {
-            $dependencies[] = $this->resolveParameter($parameter, $args);
-         }
-      }
+      $dependencies = $this->getDependencies($reflector->getConstructor()->getParameters(), $args, $definition);
 
       return $reflector->newInstanceArgs($dependencies);
    }
 
-   protected function getDependencies($parameters, $args)
+   protected function getDependencies($parameters, $args, $definition = null)
    {
       $dependencies = [];
 
       foreach ($parameters as $parameter) {
          if ($class = $parameter->getClass()) {
             if ($class->isInterface()) {
-               $class = $this->findInterfaceBinding($class->name);
+               $class = $this->findInterfaceBinding($class->name, $definition);
                $dependencies[] = $class instanceof Closure ? $class($this) : $this->resolve($class);
                continue;
             }
@@ -123,23 +108,34 @@ class Container implements IContainer, ArrayAccess
       return $dependencies;
    }
 
-   protected function resolveParameter($parameter, $args)
+   protected function resolveParameter(ReflectionParameter $parameter, $args)
    {
       if (isset($args[$parameter->name])) {
          return $args[$parameter->name];
       } elseif ($parameter->isDefaultValueAvailable()) {
          return $parameter->getDefaultValue();
       }
-      throw new Exception("unable to resolve $parameter");
+      throw new Exception("unable to resolve $parameter in class {$parameter->getDeclaringClass()->getName()}");
    }
 
-   protected function findInterfaceBinding($key)
+   protected function findInterfaceBinding($key, $definition = null)
    {
+      if (isset($definition) and key($definition) == $key) {
+         return current($definition);
+      }
+
       if (isset($this->bindings[$key])) {
          return $this->bindings[$key][0];
       }
 
       throw new Exception("key $key hasn't been bound in the container");
+   }
+
+   protected function checkUnique($key)
+   {
+      if (isset($this->bindings[$key]) or isset($this->instances[$key])) {
+         throw new Exception("key [$key] has already been bound");
+      }
    }
 
    public function offsetGet($key)

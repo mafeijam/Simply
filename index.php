@@ -9,13 +9,13 @@ $c = new Container;
 
 class foo implements Ibar{
    public function call() {
-      echo 'call me foo';
+      echo ' call me foo';
    }
 }
 
 class lulu implements Ibar {
    public function call() {
-
+      echo ' call me lulu';
    }
 }
 
@@ -32,7 +32,7 @@ class quz {
 }
 
 class bub {
-   public function __construct(foo $f, $b = 'def') {
+   public function __construct(foo $f, $b) {
       echo 'creating ' . $b;
    }
 }
@@ -47,7 +47,7 @@ $c->bind('Ibar', 'foo');
 $c->bind('b', 'bub');
 $c->bind('k', function($c){
    //$b = $c->make('b', ['b' => 'yah']);
-   return new kii($c['b']);
+   return new kii($c->make('b', ['b' => 'yah']));
 });
 
 $b = $c->make('quz');
@@ -57,6 +57,6 @@ $c->define('quz', ['Ibar'=>'lulu']);
 $qq = $c->make('quz', ['var'=>'vava']);
 var_dump($qq);
 
-$bu1 = $c->make('b', ['b' => 'bu1']);
-$bu2 = $c->make('b', ['b' => 'bu2']);
+$bu1 = $c->make('b', ['b' => 'bu1 ']);
+$bu2 = $c->make('b', ['b' => 'bu2 ']);
 $k = $c->make('k');
