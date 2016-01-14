@@ -12,6 +12,7 @@ class Container implements IContainer, ArrayAccess
 {
    protected $bindings = [];
    protected $instances = [];
+   protected $definition = [];
 
    public function bind($key, $value, $singleton = false)
    {
@@ -36,10 +37,20 @@ class Container implements IContainer, ArrayAccess
       $this->instances[$key] = $object;
    }
 
+   public function define($key, array $args)
+   {
+      $this->definition[$key] = $args;
+   }
+
    public function make($key, array $args = [])
    {
       if (isset($this->instances[$key])) {
          return $this->instances[$key];
+      }
+
+      if (isset($this->definition[$key])) {
+         var_dump($this->definition[$key]);
+         return $this->resolveDefined($this->definition[$key], $key);
       }
 
       if (isset($this->bindings[$key])) {
@@ -73,6 +84,25 @@ class Container implements IContainer, ArrayAccess
       $finalize = array_merge($dependencies, $args);
 
       return $reflector->newInstanceArgs($finalize);
+   }
+
+   protected function resolveDefined($definition, $class)
+   {
+      $reflector = new ReflectionClass($class);
+
+      $dependencies = [];
+
+      foreach ($reflector->getConstructor()->getParameters() as $parameter) {
+         if ($dependeny = $parameter->getClass()) {
+            if ($dependeny->name == key($definition)) {
+               $dependencies[] = $this->resolve(current($definition));
+               continue;
+            }
+            $dependencies[] = $this->resolve($dependeny->name);
+         }
+      }
+
+      return $reflector->newInstanceArgs($dependencies);
    }
 
    protected function getDependencies($parameters)

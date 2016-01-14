@@ -13,13 +13,20 @@ class foo implements bar{
    }
 }
 
+class lulu implements bar {
+   public function call() {
+
+   }
+}
+
 interface bar {
    public function call();
 }
 
 class quz {
-   public function __construct(bar $bar) {
-      return $bar->call();
+   public function __construct(bar $b) {
+      $this->b = $b;
+      return $b->call();
    }
 }
 
@@ -42,11 +49,12 @@ $c->singleton('b', function(){
 $c->bind('k', function($c){
    return new kii($c['b']);
 });
-//$c->instance('b', new bub('yaya'));
+
 $b = $c->make('quz');
 $bu1 = $c->make('b');
 $bu2 = $c->make('b');
 $k = $c->make('k');
-$c->make('kii');
-var_dump($b, $bu1, $bu2, $k);
+$c->define('quz', ['bar'=>'lulu']);
 
+$qq = $c->make('quz');
+var_dump($qq);
