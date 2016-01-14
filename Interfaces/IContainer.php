@@ -10,6 +10,8 @@ interface IContainer
 
    public function instance($key, $object);
 
+   public function define($key, array $args);
+
    public function make($key, array $args = []);
 
    public function resolve($class, array $args = []);

@@ -49,8 +49,7 @@ class Container implements IContainer, ArrayAccess
       }
 
       if (isset($this->definition[$key])) {
-         var_dump($this->definition[$key]);
-         return $this->resolveDefined($this->definition[$key], $key);
+         return $this->resolveDefined($this->definition[$key], $key, $args);
       }
 
       if (isset($this->bindings[$key])) {
@@ -80,34 +79,34 @@ class Container implements IContainer, ArrayAccess
       if (empty($parameters))
          return new $class;
 
-      $dependencies = $this->getDependencies($parameters);
-      $finalize = array_merge($dependencies, $args);
-
-      return $reflector->newInstanceArgs($finalize);
+      return $reflector->newInstanceArgs($this->getDependencies($parameters, $args));
    }
 
-   protected function resolveDefined($definition, $class)
+   protected function resolveDefined($definition, $class, $args)
    {
       $reflector = new ReflectionClass($class);
 
       $dependencies = [];
 
       foreach ($reflector->getConstructor()->getParameters() as $parameter) {
-         if ($dependeny = $parameter->getClass()) {
-            if ($dependeny->name == key($definition)) {
+         if ($class = $parameter->getClass()) {
+            if ($class->name == key($definition)) {
                $dependencies[] = $this->resolve(current($definition));
                continue;
             }
-            $dependencies[] = $this->resolve($dependeny->name);
+            $dependencies[] = $this->resolve($class->name);
+         } else {
+            $dependencies[] = $this->resolveParameter($parameter, $args);
          }
       }
 
       return $reflector->newInstanceArgs($dependencies);
    }
 
-   protected function getDependencies($parameters)
+   protected function getDependencies($parameters, $args)
    {
       $dependencies = [];
+
       foreach ($parameters as $parameter) {
          if ($class = $parameter->getClass()) {
             if ($class->isInterface()) {
@@ -116,15 +115,22 @@ class Container implements IContainer, ArrayAccess
                continue;
             }
             $dependencies[] = $this->resolve($class->name);
-         }
-
-         if ($parameter->isDefaultValueAvailable()) {
-            $dependencies[$parameter->name] = $parameter->getDefaultValue();
          } else {
-            throw new Exception("unable to resolve $parameter");
+            $dependencies[] = $this->resolveParameter($parameter, $args);
          }
       }
+
       return $dependencies;
+   }
+
+   protected function resolveParameter($parameter, $args)
+   {
+      if (isset($args[$parameter->name])) {
+         return $args[$parameter->name];
+      } elseif ($parameter->isDefaultValueAvailable()) {
+         return $parameter->getDefaultValue();
+      }
+      throw new Exception("unable to resolve $parameter");
    }
 
    protected function findInterfaceBinding($key)
