@@ -118,7 +118,7 @@ class Container implements IContainer, ArrayAccess
 
    public function offsetExists($key)
    {
-      return isset($this->bindings[$key]);
+      return isset($this->bindings[$key]) or isset($this->instances[$key]);
    }
 
    public function offsetUnset($key)
