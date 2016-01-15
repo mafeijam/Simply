@@ -12,6 +12,8 @@ interface IContainer
 
    public function define($key, array $args);
 
+   public function with(array $args);
+
    public function make($key, array $args = []);
 
    public function resolve($class, array $args = []);
