@@ -13,18 +13,28 @@ class Container implements IContainer, ArrayAccess
 {
    protected $bindings = [];
    protected $instances = [];
-   protected $definition = [];
+   protected $definitions = [];
+   protected $args = [];
 
    public function bind($key, $value, $singleton = false)
    {
       $this->checkUnique($key);
 
       $this->bindings[$key] = [$value, $singleton];
+
+      return $this;
    }
 
    public function singleton($key, $value)
    {
       return $this->bind($key, $value, true);
+   }
+
+   public function with(array $args)
+   {
+      end($this->bindings);
+      $key = key($this->bindings);
+      $this->args[$key] = $args;
    }
 
    public function instance($key, $object)
@@ -34,20 +44,30 @@ class Container implements IContainer, ArrayAccess
       $this->instances[$key] = $object;
    }
 
-   public function define($key, array $args)
+   public function define($key, array $definition)
    {
-      $this->definition[$key] = $args;
+      $value = $key;
+
+      if (is_array($key)) {
+         $value = current($key);
+         $key = key($key);
+      }
+
+      $this->definitions[$key] = $definition;
+      $this->bind($key, $value);
+      return $this;
    }
 
    public function make($key, array $args = [])
    {
-      if (isset($this->instances[$key])) {
+      if (isset($this->instances[$key]))
          return $this->instances[$key];
-      }
 
-      if (isset($this->definition[$key])) {
-         return $this->resolveDefined($this->definition[$key], $key, $args);
-      }
+      if (isset($this->args[$key]) and empty($args))
+         $args = $this->args[$key];
+
+      if (isset($this->definitions[$key]))
+         return $this->resolveDefined($this->definitions[$key], $key, $args);
 
       if (isset($this->bindings[$key])) {
          list($class, $singleton) = $this->bindings[$key];
@@ -56,6 +76,7 @@ class Container implements IContainer, ArrayAccess
 
          if ($singleton) {
             $this->instances[$key] = $object;
+            unset($this->bindings[$key]);
          }
 
          return $object;
@@ -79,8 +100,10 @@ class Container implements IContainer, ArrayAccess
       return $reflector->newInstanceArgs($this->getDependencies($parameters, $args));
    }
 
-   protected function resolveDefined($definition, $class, $args)
+   protected function resolveDefined($definition, $class, array $args = [])
    {
+      $class = $this->bindings[$class][0];
+
       $reflector = new ReflectionClass($class);
 
       $dependencies = $this->getDependencies($reflector->getConstructor()->getParameters(), $args, $definition);
@@ -100,9 +123,9 @@ class Container implements IContainer, ArrayAccess
                continue;
             }
             $dependencies[] = $this->resolve($class->name);
-         } else {
-            $dependencies[] = $this->resolveParameter($parameter, $args);
+            continue;
          }
+         $dependencies[] = $this->resolveParameter($parameter, $args);
       }
 
       return $dependencies;
@@ -110,32 +133,30 @@ class Container implements IContainer, ArrayAccess
 
    protected function resolveParameter(ReflectionParameter $parameter, $args)
    {
-      if (isset($args[$parameter->name])) {
+      if (isset($args[$parameter->name]))
          return $args[$parameter->name];
-      } elseif ($parameter->isDefaultValueAvailable()) {
+
+      if ($parameter->isDefaultValueAvailable())
          return $parameter->getDefaultValue();
-      }
+
       throw new Exception("unable to resolve $parameter in class {$parameter->getDeclaringClass()->getName()}");
    }
 
    protected function findInterfaceBinding($key, $definition = null)
    {
-      if (isset($definition) and key($definition) == $key) {
+      if (isset($definition) and key($definition) == $key)
          return current($definition);
-      }
 
-      if (isset($this->bindings[$key])) {
+      if (isset($this->bindings[$key]))
          return $this->bindings[$key][0];
-      }
 
       throw new Exception("key $key hasn't been bound in the container");
    }
 
    protected function checkUnique($key)
    {
-      if (isset($this->bindings[$key]) or isset($this->instances[$key])) {
+      if (isset($this->bindings[$key]) or isset($this->instances[$key]))
          throw new Exception("key [$key] has already been bound");
-      }
    }
 
    public function offsetGet($key)
@@ -155,6 +176,11 @@ class Container implements IContainer, ArrayAccess
 
    public function offsetUnset($key)
    {
-      unset($this->bindings[$key], $this->instances[$key]);
+      unset($this->bindings[$key], $this->instances[$key], $this->args[$key], $this->definitions[$key]);
+   }
+
+   public function __get($key)
+   {
+      return $this->make($key);
    }
 }
