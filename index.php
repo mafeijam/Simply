@@ -11,6 +11,17 @@ class foo implements Ibar{
    public function call() {
       echo ' call me foo';
    }
+   public function set($var) {
+      echo $var;
+      return $this;
+   }
+   public function qoo(qoo $q, $b) {
+      var_dump($q, $b);
+   }
+}
+
+class qoo {
+
 }
 
 class lulu implements Ibar {
@@ -24,9 +35,9 @@ interface Ibar {
 }
 
 class quz {
-   public function __construct(Ibar $b, $var = 'def') {
+   public function __construct(Ibar $b, $var = 'def', $v2) {
       $this->b = $b;
-      echo $var;
+      echo $var . $v2;
       return $b->call();
    }
 }
@@ -42,7 +53,12 @@ class kii {
 
    }
 }
+$c->bind('Ibar', 'foo');
 
+$c->make('quz', ['vava', '--jijij']);
+
+$c->call('foo@qoo', [123]);
+/*
 $c->bind('Ibar', 'foo');
 $c->bind('b', 'bub');
 $c->bind('k', function($c){
@@ -60,3 +76,7 @@ var_dump($qq);
 $bu1 = $c->make('b', ['b' => 'bu1 ']);
 $bu2 = $c->make('b', ['b' => 'bu2 ']);
 $k = $c->make('k');
+*/
+
+
+

@@ -6,6 +6,8 @@ use Closure;
 use Exception;
 use ArrayAccess;
 use ReflectionClass;
+use ReflectionMethod;
+use ReflectionFunction;
 use ReflectionParameter;
 use Simply\Interfaces\IContainer;
 
@@ -15,6 +17,7 @@ class Container implements IContainer, ArrayAccess
    protected $instances = [];
    protected $definitions = [];
    protected $args = [];
+   protected $extenders = [];
 
    public function bind($key, $value, $singleton = false)
    {
@@ -37,6 +40,15 @@ class Container implements IContainer, ArrayAccess
       $this->args[$key] = $args;
    }
 
+   public function extend($key, Closure $callback)
+   {
+      if (isset($this->instances[$key])) {
+         $this->instances[$key] = $callback($this->instances[$key], $this);
+      }
+
+      $this->extenders[$key][] = $callback;
+   }
+
    public function instance($key, $object)
    {
       $this->checkUnique($key);
@@ -54,8 +66,7 @@ class Container implements IContainer, ArrayAccess
       }
 
       $this->definitions[$key] = $definition;
-      $this->bind($key, $value);
-      return $this;
+      return $this->bind($key, $value);
    }
 
    public function make($key, array $args = [])
@@ -74,6 +85,12 @@ class Container implements IContainer, ArrayAccess
 
          $object = $class instanceof Closure ? $class($this) : $this->resolve($class, $args);
 
+         if (isset($this->extenders[$key])) {
+            foreach ($this->extenders[$key] as $extender) {
+               $object = $extender($object, $this);
+            }
+         }
+
          if ($singleton) {
             $this->instances[$key] = $object;
             unset($this->bindings[$key]);
@@ -83,6 +100,20 @@ class Container implements IContainer, ArrayAccess
       }
 
       return $this->resolve($key, $args);
+   }
+
+   public function call($callback, array $args = [])
+   {
+      if ($callback instanceof Closure) {
+         $reflector = new ReflectionFunction($callback);
+      } else {
+         list($class, $method) = explode('@', $callback);
+         $reflector = new ReflectionMethod($class, $method);
+         $callback = [$this->make($class), $method];
+      }
+
+      $dependencies = $this->getDependencies($reflector->getParameters(), $args);
+      return call_user_func_array($callback, $dependencies);
    }
 
    public function resolve($class, array $args = [])
@@ -131,10 +162,13 @@ class Container implements IContainer, ArrayAccess
       return $dependencies;
    }
 
-   protected function resolveParameter(ReflectionParameter $parameter, $args)
+   protected function resolveParameter(ReflectionParameter $parameter, &$args)
    {
       if (isset($args[$parameter->name]))
          return $args[$parameter->name];
+
+      if (array_values($args) === $args)
+         return array_shift($args);
 
       if ($parameter->isDefaultValueAvailable())
          return $parameter->getDefaultValue();
