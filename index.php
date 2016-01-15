@@ -55,7 +55,7 @@ class kii {
 }
 $c->bind('Ibar', 'foo');
 
-$c->make('quz', ['vava', '--jijij']);
+$c->make('quz', ['v2'=>'--jijij']);
 
 $c->call('foo@qoo', [123]);
 /*

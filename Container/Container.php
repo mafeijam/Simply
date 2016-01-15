@@ -22,9 +22,7 @@ class Container implements IContainer, ArrayAccess
    public function bind($key, $value, $singleton = false)
    {
       $this->checkUnique($key);
-
       $this->bindings[$key] = [$value, $singleton];
-
       return $this;
    }
 
@@ -42,9 +40,8 @@ class Container implements IContainer, ArrayAccess
 
    public function extend($key, Closure $callback)
    {
-      if (isset($this->instances[$key])) {
+      if (isset($this->instances[$key]))
          $this->instances[$key] = $callback($this->instances[$key], $this);
-      }
 
       $this->extenders[$key][] = $callback;
    }
@@ -52,7 +49,6 @@ class Container implements IContainer, ArrayAccess
    public function instance($key, $object)
    {
       $this->checkUnique($key);
-
       $this->instances[$key] = $object;
    }
 
@@ -134,11 +130,8 @@ class Container implements IContainer, ArrayAccess
    protected function resolveDefined($definition, $class, array $args = [])
    {
       $class = $this->bindings[$class][0];
-
       $reflector = new ReflectionClass($class);
-
       $dependencies = $this->getDependencies($reflector->getConstructor()->getParameters(), $args, $definition);
-
       return $reflector->newInstanceArgs($dependencies);
    }
 
@@ -162,7 +155,7 @@ class Container implements IContainer, ArrayAccess
       return $dependencies;
    }
 
-   protected function resolveParameter(ReflectionParameter $parameter, &$args)
+   protected function resolveParameter(ReflectionParameter $parameter, array &$args)
    {
       if (isset($args[$parameter->name]))
          return $args[$parameter->name];
@@ -173,7 +166,7 @@ class Container implements IContainer, ArrayAccess
       if ($parameter->isDefaultValueAvailable())
          return $parameter->getDefaultValue();
 
-      throw new Exception("unable to resolve $parameter in class {$parameter->getDeclaringClass()->getName()}");
+      throw new Exception("unable to resolve $parameter in class [{$parameter->getDeclaringClass()->getName()}]");
    }
 
    protected function findInterfaceBinding($key, $definition = null)
@@ -189,7 +182,7 @@ class Container implements IContainer, ArrayAccess
 
    protected function checkUnique($key)
    {
-      if (isset($this->bindings[$key]) or isset($this->instances[$key]))
+      if (isset($this[$key]))
          throw new Exception("key [$key] has already been bound");
    }
 
@@ -215,6 +208,6 @@ class Container implements IContainer, ArrayAccess
 
    public function __get($key)
    {
-      return $this->make($key);
+      return $this[$key];
    }
 }
