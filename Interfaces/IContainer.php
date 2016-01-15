@@ -10,6 +10,8 @@ interface IContainer
 
    public function singleton($key, $value);
 
+   public function share($object);
+
    public function with(array $args);
 
    public function extend($key, Closure $callback);

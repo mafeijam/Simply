@@ -8,11 +8,13 @@ use Simply\Container\Container;
 $c = new Container;
 
 class foo implements Ibar{
+   public $foo;
+
    public function call() {
       echo ' call me foo';
    }
    public function set($var) {
-      echo $var;
+      $this->foo = $var;
       return $this;
    }
    public function qoo(qoo $q, $b) {
@@ -53,11 +55,24 @@ class kii {
 
    }
 }
+
+class ff {
+   public function __construct(foo $f) {
+      var_dump($f);
+   }
+}
+
 $c->bind('Ibar', 'foo');
+$c->share(function($c){
+   return (new foo)->set(123);
+});
 
 $c->make('quz', ['v2'=>'--jijij']);
 
 $c->call('foo@qoo', [123]);
+
+$c->make('ff');
+$c->make('ff');
 /*
 $c->bind('Ibar', 'foo');
 $c->bind('b', 'bub');

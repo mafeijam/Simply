@@ -18,6 +18,7 @@ class Container implements IContainer, ArrayAccess
    protected $definitions = [];
    protected $args = [];
    protected $extenders = [];
+   protected $shares = [];
 
    public function bind($key, $value, $singleton = false)
    {
@@ -29,6 +30,14 @@ class Container implements IContainer, ArrayAccess
    public function singleton($key, $value)
    {
       return $this->bind($key, $value, true);
+   }
+
+   public function share($object)
+   {
+      if ($object instanceof Closure)
+         $object = $object($this);
+
+      $this->shares[get_class($object)] = $object;
    }
 
    public function with(array $args)
@@ -146,6 +155,12 @@ class Container implements IContainer, ArrayAccess
                $dependencies[] = $class instanceof Closure ? $class($this) : $this->resolve($class);
                continue;
             }
+
+            if ($this->isShare($class->name)) {
+               $dependencies[] = $this->shares[$class->name];
+               continue;
+            }
+
             $dependencies[] = $this->resolve($class->name);
             continue;
          }
@@ -178,6 +193,11 @@ class Container implements IContainer, ArrayAccess
          return $this->bindings[$key][0];
 
       throw new Exception("key $key hasn't been bound in the container");
+   }
+
+   protected function isShare($class)
+   {
+      return array_key_exists($class, $this->shares);
    }
 
    protected function checkUnique($key)
