@@ -43,8 +43,7 @@ class Container implements IContainer, ArrayAccess
    public function with(array $args)
    {
       end($this->bindings);
-      $key = key($this->bindings);
-      $this->args[$key] = $args;
+      $this->args[key($this->bindings)] = $args;
    }
 
    public function extend($key, Closure $callback)
@@ -90,11 +89,7 @@ class Container implements IContainer, ArrayAccess
 
          $object = $class instanceof Closure ? $class($this) : $this->resolve($class, $args);
 
-         if (isset($this->extenders[$key])) {
-            foreach ($this->extenders[$key] as $extender) {
-               $object = $extender($object, $this);
-            }
-         }
+         $this->runExtenders($object, $key);
 
          if ($singleton) {
             $this->instances[$key] = $object;
@@ -192,7 +187,16 @@ class Container implements IContainer, ArrayAccess
       if (isset($this->bindings[$key]))
          return $this->bindings[$key][0];
 
-      throw new Exception("key $key hasn't been bound in the container");
+      throw new Exception("unable to resolve interface $key");
+   }
+
+   protected function runExtenders(&$object, $key)
+   {
+      if (isset($this->extenders[$key])) {
+         foreach ($this->extenders[$key] as $extender) {
+            $object = $extender($object, $this);
+         }
+      }
    }
 
    protected function isShare($class)
