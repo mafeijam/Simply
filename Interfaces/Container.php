@@ -4,11 +4,13 @@ namespace Simply\Interfaces;
 
 use Closure;
 
-interface IContainer
+interface Container
 {
    public function bind($key, $value, $singleton = false);
 
    public function singleton($key, $value);
+
+   public function replace(Closure $callback);
 
    public function share($object);
 
@@ -17,8 +19,6 @@ interface IContainer
    public function extend($key, Closure $callback);
 
    public function instance($key, $object);
-
-   public function define($key, array $args);
 
    public function make($key, array $args = []);
 

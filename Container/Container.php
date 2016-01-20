@@ -9,16 +9,19 @@ use ReflectionClass;
 use ReflectionMethod;
 use ReflectionFunction;
 use ReflectionParameter;
-use Simply\Interfaces\IContainer;
+use Simply\Interfaces\Container as ContainerInterface;
 
-class Container implements IContainer, ArrayAccess
+class Container implements ContainerInterface, ArrayAccess
 {
    protected $bindings = [];
    protected $instances = [];
-   protected $definitions = [];
    protected $args = [];
    protected $extenders = [];
    protected $shares = [];
+   protected $sharesArgs = [];
+   protected $enableOverride = false;
+
+   protected static $instance;
 
    public function bind($key, $value, $singleton = false)
    {
@@ -32,8 +35,22 @@ class Container implements IContainer, ArrayAccess
       return $this->bind($key, $value, true);
    }
 
-   public function share($object)
+   public function replace(Closure $callback)
    {
+      $this->enableOverride = true;
+      $callback($this);
+      $this->enableOverride = false;
+      return $this;
+   }
+
+   public function share($object, array $args = [])
+   {
+      if (is_string($object)) {
+         $this->shares[$object] = $object;
+         $this->sharesArgs[$object] = $args;
+         return;
+      }
+
       if ($object instanceof Closure)
          $object = $object($this);
 
@@ -60,19 +77,6 @@ class Container implements IContainer, ArrayAccess
       $this->instances[$key] = $object;
    }
 
-   public function define($key, array $definition)
-   {
-      $value = $key;
-
-      if (is_array($key)) {
-         $value = current($key);
-         $key = key($key);
-      }
-
-      $this->definitions[$key] = $definition;
-      return $this->bind($key, $value);
-   }
-
    public function make($key, array $args = [])
    {
       if (isset($this->instances[$key]))
@@ -80,9 +84,6 @@ class Container implements IContainer, ArrayAccess
 
       if (isset($this->args[$key]) and empty($args))
          $args = $this->args[$key];
-
-      if (isset($this->definitions[$key]))
-         return $this->resolveDefined($this->definitions[$key], $key, $args);
 
       if (isset($this->bindings[$key])) {
          list($class, $singleton) = $this->bindings[$key];
@@ -102,18 +103,30 @@ class Container implements IContainer, ArrayAccess
       return $this->resolve($key, $args);
    }
 
-   public function call($callback, array $args = [])
+   public function call($callback, array $args = [], $closure = false)
    {
-      if ($callback instanceof Closure) {
-         $reflector = new ReflectionFunction($callback);
-      } else {
-         list($class, $method) = explode('@', $callback);
-         $reflector = new ReflectionMethod($class, $method);
-         $callback = [$this->make($class), $method];
-      }
+      $reflector = $this->getReflector($callback);
 
       $dependencies = $this->getDependencies($reflector->getParameters(), $args);
+
+      if ($closure) {
+         return function () use ($callback, $dependencies) {
+            return call_user_func_array($callback, $dependencies);
+         };
+      }
+
       return call_user_func_array($callback, $dependencies);
+   }
+
+   protected function getReflector(&$callback)
+   {
+      if (is_string($callback)) {
+         list($class, $method) = explode('@', $callback);
+         $callback = [$this->make($class), $method];
+         return new ReflectionMethod($class, $method);
+      }
+
+      return new ReflectionFunction($callback);
    }
 
    public function resolve($class, array $args = [])
@@ -131,23 +144,15 @@ class Container implements IContainer, ArrayAccess
       return $reflector->newInstanceArgs($this->getDependencies($parameters, $args));
    }
 
-   protected function resolveDefined($definition, $class, array $args = [])
-   {
-      $class = $this->bindings[$class][0];
-      $reflector = new ReflectionClass($class);
-      $dependencies = $this->getDependencies($reflector->getConstructor()->getParameters(), $args, $definition);
-      return $reflector->newInstanceArgs($dependencies);
-   }
-
-   protected function getDependencies($parameters, $args, $definition = null)
+   protected function getDependencies(array $parameters, array $args)
    {
       $dependencies = [];
 
       foreach ($parameters as $parameter) {
          if ($class = $parameter->getClass()) {
             if ($class->isInterface()) {
-               $class = $this->findInterfaceBinding($class->name, $definition);
-               $dependencies[] = $class instanceof Closure ? $class($this) : $this->resolve($class);
+               $interface = $this->resolveInterface($class->name, $args, $parameter);
+               $dependencies[] = $this->parseInterface($interface);
                continue;
             }
 
@@ -156,7 +161,7 @@ class Container implements IContainer, ArrayAccess
                continue;
             }
 
-            $dependencies[] = $this->resolve($class->name);
+            $dependencies[] = $this->make($class->name);
             continue;
          }
          $dependencies[] = $this->resolveParameter($parameter, $args);
@@ -179,15 +184,29 @@ class Container implements IContainer, ArrayAccess
       throw new Exception("unable to resolve $parameter in class [{$parameter->getDeclaringClass()->getName()}]");
    }
 
-   protected function findInterfaceBinding($key, $definition = null)
+   protected function resolveInterface($key, array $args, ReflectionParameter $parameter)
    {
-      if (isset($definition) and key($definition) == $key)
-         return current($definition);
+      if (isset($args[$parameter->name]))
+         return $args[$parameter->name];
+
+      if (isset($args[$key]))
+         return $args[$key];
+
+      if (isset($this->instances[$key]))
+         return $this->instances[$key];
 
       if (isset($this->bindings[$key]))
          return $this->bindings[$key][0];
 
-      throw new Exception("unable to resolve interface $key");
+      throw new Exception("unable to resolve interface [$key]");
+   }
+
+   protected function parseInterface($interface)
+   {
+      if (is_object($interface))
+         return $interface;
+
+      return $interface instanceof Closure ? $interface($this) : $this->make($interface);
    }
 
    protected function runExtenders(&$object, $key)
@@ -201,13 +220,26 @@ class Container implements IContainer, ArrayAccess
 
    protected function isShare($class)
    {
+      if (isset($this->shares[$class]) and is_string($this->shares[$class]))
+         $this->shares[$class] = $this->resolve($this->shares[$class], $this->sharesArgs[$class]);
+
       return array_key_exists($class, $this->shares);
    }
 
    protected function checkUnique($key)
    {
-      if (isset($this[$key]))
+      if (isset($this[$key]) and $this->enableOverride === false)
          throw new Exception("key [$key] has already been bound");
+   }
+
+   protected static function setInstance($instance)
+   {
+      static::$instance = $instance;
+   }
+
+   public static function getInstance()
+   {
+      return static::$instance;
    }
 
    public function offsetGet($key)
@@ -227,11 +259,16 @@ class Container implements IContainer, ArrayAccess
 
    public function offsetUnset($key)
    {
-      unset($this->bindings[$key], $this->instances[$key], $this->args[$key], $this->definitions[$key]);
+      unset($this->bindings[$key], $this->instances[$key], $this->args[$key]);
    }
 
    public function __get($key)
    {
       return $this[$key];
+   }
+
+   public function __set($key, $value)
+   {
+      $this[$key] = $value;
    }
 }
