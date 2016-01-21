@@ -181,7 +181,10 @@ class Container implements ContainerInterface, ArrayAccess
       if ($parameter->isDefaultValueAvailable())
          return $parameter->getDefaultValue();
 
-      throw new Exception("unable to resolve $parameter in class [{$parameter->getDeclaringClass()->getName()}]");
+      $class = $parameter->getDeclaringClass()->getName();
+      $method = $parameter->getDeclaringFunction()->getShortName();
+
+      throw new Exception("unable to resolve parameter \${$parameter->getName()} in class [$class] method [$method]");
    }
 
    protected function resolveInterface($key, array $args, ReflectionParameter $parameter)
